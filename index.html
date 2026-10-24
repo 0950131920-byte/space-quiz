@@ -265,7 +265,8 @@
       background: var(--accent-soft);
     }
 
-    .answer:focus-visible, .next-button:focus-visible, .restart-button:focus-visible {
+    .answer:focus-visible, .next-button:focus-visible, .restart-button:focus-visible,
+    .review-button:focus-visible, .review-back-button:focus-visible {
       outline: 3px solid color-mix(in srgb, var(--accent) 55%, transparent);
       outline-offset: 3px;
     }
@@ -359,7 +360,7 @@
       margin-top: 14px;
     }
 
-    .next-button, .restart-button {
+    .next-button, .restart-button, .review-button, .review-back-button {
       min-height: 44px;
       display: inline-flex;
       align-items: center;
@@ -377,12 +378,12 @@
       transition: transform 160ms ease, box-shadow 160ms ease;
     }
 
-    .next-button:hover, .restart-button:hover {
+    .next-button:hover, .restart-button:hover, .review-button:hover, .review-back-button:hover {
       transform: translateY(-1px);
       box-shadow: 0 10px 20px rgb(102 88 232 / 29%);
     }
 
-    .next-button:active, .restart-button:active { transform: translateY(0); }
+    .next-button:active, .restart-button:active, .review-button:active, .review-back-button:active { transform: translateY(0); }
 
     .result {
       padding: 44px 31px 38px;
@@ -536,6 +537,62 @@
     }
 
     .result .restart-button { min-width: 172px; }
+    .result-actions {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 10px;
+    }
+
+    .review {
+      padding: 35px 31px 32px;
+    }
+
+    .review-title {
+      margin: 0 0 8px;
+      font-size: clamp(21px, 5vw, 26px);
+      font-weight: 800;
+      letter-spacing: -.035em;
+      line-height: 1.2;
+    }
+
+    .review-intro {
+      margin: 0 0 20px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .review-list {
+      display: grid;
+      gap: 12px;
+      margin: 0 0 22px;
+      padding: 0;
+      list-style: none;
+    }
+
+    .review-item {
+      padding: 15px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: color-mix(in srgb, var(--card) 88%, var(--page));
+    }
+
+    .review-question {
+      margin: 0 0 10px;
+      font-size: 15px;
+      font-weight: 750;
+      line-height: 1.35;
+    }
+
+    .review-answer, .review-fact {
+      margin: 5px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .review-answer strong, .review-fact strong { color: var(--ink); }
+    .review-back-button { min-width: 172px; }
+
     .footer-note {
       margin: 15px 0 0;
       color: var(--muted);
@@ -570,6 +627,7 @@
       body { padding: 25px 14px; }
       .card-inner { padding: 23px 20px 24px; }
       .result { padding: 35px 22px 31px; }
+      .review { padding: 30px 20px 24px; }
       .question-area { padding-top: 23px; }
       .answer { min-height: 54px; }
     }
@@ -623,6 +681,13 @@
         </div>
       </div>
       <div class="result" id="result-screen" hidden></div>
+      <div class="review" id="review-screen" hidden>
+        <p class="eyebrow">Repaso de misión</p>
+        <h1 class="review-title" id="review-title" tabindex="-1">Tus respuestas incorrectas</h1>
+        <p class="review-intro">Repasa lo que elegiste, la respuesta correcta y un dato para recordar.</p>
+        <ol class="review-list" id="review-list"></ol>
+        <button class="review-back-button" id="review-back-button" type="button">Volver a resultados</button>
+      </div>
     </section>
     <p class="footer-note">10 preguntas · Un pequeño gran viaje por el cosmos</p>
   </main>
@@ -710,9 +775,14 @@
     const nextButton = document.getElementById("next-button");
     const quizScreen = document.getElementById("quiz-screen");
     const resultScreen = document.getElementById("result-screen");
+    const reviewScreen = document.getElementById("review-screen");
+    const reviewTitle = document.getElementById("review-title");
+    const reviewList = document.getElementById("review-list");
+    const reviewBackButton = document.getElementById("review-back-button");
     let current = 0;
     let score = 0;
     let answered = false;
+    let incorrectAnswers = [];
 
     function updateProgress() {
       const percent = Math.round(((current + 1) / questions.length) * 100);
@@ -779,6 +849,8 @@
       if (isCorrect) {
         score += 1;
         scoreEl.textContent = String(score);
+      } else {
+        incorrectAnswers.push({ questionIndex: current, selectedIndex: index });
       }
 
       feedback.classList.add(isCorrect ? "correct" : "incorrect");
@@ -805,6 +877,7 @@
             : "Toda gran aventura empieza con una pregunta. ¡Prepárate y vuelve a intentarlo!";
 
       quizScreen.hidden = true;
+      reviewScreen.hidden = true;
       resultScreen.innerHTML = `
         <div class="result-emoji" aria-hidden="true">${reaction}</div>
         <p class="eyebrow">Misión completada</p>
@@ -821,21 +894,74 @@
         </h1>
         <p class="result-copy">${copy}</p>
         <div class="result-score">Tu puntuación &nbsp; <strong>${score}</strong> <span>/ ${questions.length}</span></div>
-        <button class="restart-button" type="button">Volver a despegar <span aria-hidden="true">↻</span></button>
+        <div class="result-actions">
+          ${incorrectAnswers.length > 0 ? '<button class="review-button" type="button">Repasar errores</button>' : ""}
+          <button class="restart-button" type="button">Volver a despegar <span aria-hidden="true">↻</span></button>
+        </div>
       `;
       resultScreen.hidden = false;
       resultScreen.querySelector(".mission-display").focus();
       resultScreen.querySelector(".restart-button").addEventListener("click", restart);
+      const reviewButton = resultScreen.querySelector(".review-button");
+      if (reviewButton) reviewButton.addEventListener("click", showReview);
+    }
+
+    function showReview() {
+      reviewList.replaceChildren();
+      incorrectAnswers.forEach(({ questionIndex, selectedIndex }) => {
+        const item = questions[questionIndex];
+        const reviewItem = document.createElement("li");
+        reviewItem.className = "review-item";
+
+        const question = document.createElement("h2");
+        question.className = "review-question";
+        question.textContent = `${questionIndex + 1}. ${item.question}`;
+
+        const selectedAnswer = document.createElement("p");
+        selectedAnswer.className = "review-answer";
+        const selectedLabel = document.createElement("strong");
+        selectedLabel.textContent = "Tu respuesta: ";
+        selectedAnswer.append(selectedLabel, document.createTextNode(item.answers[selectedIndex]));
+
+        const correctAnswer = document.createElement("p");
+        correctAnswer.className = "review-answer";
+        const correctLabel = document.createElement("strong");
+        correctLabel.textContent = "Respuesta correcta: ";
+        correctAnswer.append(correctLabel, document.createTextNode(item.answers[item.correct]));
+
+        const fact = document.createElement("p");
+        fact.className = "review-fact";
+        const factLabel = document.createElement("strong");
+        factLabel.textContent = "Dato: ";
+        fact.append(factLabel, document.createTextNode(item.fact));
+
+        reviewItem.append(question, selectedAnswer, correctAnswer, fact);
+        reviewList.append(reviewItem);
+      });
+
+      resultScreen.hidden = true;
+      reviewScreen.hidden = false;
+      reviewTitle.focus();
+    }
+
+    function returnToResults() {
+      reviewScreen.hidden = true;
+      resultScreen.hidden = false;
+      resultScreen.querySelector(".mission-display").focus();
     }
 
     function restart() {
       current = 0;
       score = 0;
+      incorrectAnswers = [];
       scoreEl.textContent = "0";
       resultScreen.hidden = true;
+      reviewScreen.hidden = true;
       quizScreen.hidden = false;
       renderQuestion(true);
     }
+
+    reviewBackButton.addEventListener("click", returnToResults);
 
     nextButton.addEventListener("click", () => {
       if (!answered) return;
